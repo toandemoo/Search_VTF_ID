@@ -1,0 +1,411 @@
+@page
+@model Search_VTF_ID.Pages.IndexModel
+
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1" />
+
+    <title>Tìm kiếm võ sinh</title>
+
+    <style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        padding: 40px 20px;
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+    }
+
+    .container {
+        max-width: 900px;
+        margin: auto;
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,.08);
+    }
+
+    h1 {
+        text-align: center;
+        margin-bottom: 25px;
+    }
+
+    .search-box {
+        display: flex;
+        gap: 10px;
+    }
+
+    input {
+        flex: 1;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 16px;
+        outline: none;
+    }
+
+    input:focus {
+        border-color: #111;
+    }
+
+    button {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 8px;
+        background: #111;
+        color: white;
+        cursor: pointer;
+    }
+
+    button:hover {
+        opacity: .85;
+    }
+
+    #status {
+        margin-top: 15px;
+        color: #666;
+    }
+
+    /* =========================
+       RESULT LIST
+       ========================= */
+
+    .results-list {
+        margin-top: 15px;
+
+        /* giới hạn chiều cao */
+        max-height: 500px;
+
+        /* cho phép scroll */
+        overflow-y: auto;
+
+        border: 1px solid #e5e5e5;
+        border-radius: 10px;
+
+        background: #fff;
+    }
+
+    /* Thanh scroll */
+    .results-list::-webkit-scrollbar {
+        width: 7px;
+    }
+
+    .results-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .results-list::-webkit-scrollbar-thumb {
+            background: #bbb;
+            border-radius: 10px;
+        }
+
+        .results-list::-webkit-scrollbar-thumb:hover {
+            background: #999;
+        }
+
+        /* Mỗi võ sinh = 1 hàng */
+        .result-row {
+            display: flex;
+            align-items: center;
+
+            min-height: 65px;
+            padding: 10px 15px;
+
+            border-bottom: 1px solid #eee;
+
+            transition: background .15s;
+        }
+
+        .result-row:last-child {
+            border-bottom: none;
+        }
+
+        .result-row:hover {
+            background: #f8f8f8;
+        }
+
+        /* STT */
+        .result-stt {
+            width: 50px;
+            flex-shrink: 0;
+
+            color: #888;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        /* Thông tin chính */
+        .result-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .result-name {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .result-info {
+            display: flex;
+            gap: 20px;
+
+            color: #777;
+            font-size: 13px;
+
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .result-info span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Mã võ sinh */
+        .result-code {
+            width: 120px;
+            flex-shrink: 0;
+
+            font-size: 13px;
+            color: #555;
+        }
+
+        /* Cấp đai */
+        .result-belt {
+            width: 100px;
+            flex-shrink: 0;
+
+            text-align: center;
+
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 25px;
+            color: #777;
+        }
+
+        /* Mobile */
+        @@media (max-width: 650px) {
+
+            body {
+                padding: 20px 10px;
+            }
+
+            .container {
+                padding: 15px;
+            }
+
+            .result-row {
+                padding: 10px;
+            }
+
+            .result-stt {
+                width: 35px;
+            }
+
+            .result-code {
+                display: none;
+            }
+
+            .result-belt {
+                width: 70px;
+            }
+
+            .result-info {
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>Tìm kiếm võ sinh</h1>
+
+    <div class="search-box">
+
+        <input
+            id="nameInput"
+            type="text"
+            placeholder="Nhập tên võ sinh..."
+            autocomplete="off" />
+
+        <button onclick="searchStudent()">
+            Tìm kiếm
+        </button>
+
+    </div>
+
+    <div id="status"></div>
+
+    <div id="results"></div>
+
+</div>
+
+
+<script>
+
+async function searchStudent() {
+
+    const input =
+        document.getElementById("nameInput");
+
+    const status =
+        document.getElementById("status");
+
+    const results =
+        document.getElementById("results");
+
+    const name = input.value.trim();
+
+    if (!name) {
+
+        status.textContent =
+            "Vui lòng nhập tên võ sinh.";
+
+        results.innerHTML = "";
+
+        return;
+    }
+
+    status.textContent = "Đang tìm kiếm...";
+    results.innerHTML = "";
+
+    try {
+
+        const response = await fetch(
+            `/api/vo-sinh?name=${encodeURIComponent(name)}`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            status.textContent =
+                data.message || "Có lỗi xảy ra.";
+
+            return;
+        }
+
+        status.textContent =
+            `Tìm thấy ${data.count} võ sinh`;
+
+        if (data.count === 0) {
+
+            results.innerHTML = `
+                <div class="empty">
+                    Không tìm thấy võ sinh.
+                </div>
+            `;
+
+            return;
+        }
+
+        results.innerHTML = `
+            <div class="results-list">
+
+                ${data.data.map((student, index) => `
+
+                    <div class="result-row">
+
+                        <!-- STT -->
+                        <div class="result-stt">
+                            ${index + 1}
+                        </div>
+
+                        <!-- Tên + thông tin -->
+                        <div class="result-main">
+
+                            <div class="result-name">
+                                ${escapeHtml(student.hoTen)}
+                            </div>
+
+                            <div class="result-info">
+
+                                <span>
+                                    ${escapeHtml(student.ngaySinh)}
+                                </span>
+
+                                <span>
+                                    ${escapeHtml(student.gioiTinh)}
+                                </span>
+
+                                <span>
+                                    ${escapeHtml(student.clb)}
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                        <!-- Mã võ sinh -->
+                        <div class="result-code">
+                            ${escapeHtml(student.maHoiVien)}
+                        </div>
+
+                        <!-- Cấp đai -->
+                        <div class="result-belt">
+                            ${escapeHtml(student.capDang)}
+                        </div>
+
+                    </div>
+
+                `).join("")}
+
+            </div>
+        `;
+    
+    }
+    catch (error) {
+
+        console.error(error);
+
+        status.textContent =
+            "Không thể kết nối đến server.";
+
+    }
+}
+
+
+function escapeHtml(value) {
+
+    if (!value)
+        return "";
+
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+
+document
+    .getElementById("nameInput")
+    .addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter") {
+            searchStudent();
+        }
+
+    });
+
+</script>
+
+</body>
+</html>
