@@ -19,16 +19,9 @@ builder.Services.AddHttpClient();
 // });
 
 
-var redisUrl = builder.Configuration["REDIS_URL"];
-
-if (string.IsNullOrWhiteSpace(redisUrl))
-{
-    throw new Exception("REDIS_URL chưa được cấu hình!");
-}
-
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = redisUrl;
+    options.Configuration = "redis://red-da22hijncjis738daiug:6379";
 });
 
 builder.Services.AddScoped<VoSinhService>();
