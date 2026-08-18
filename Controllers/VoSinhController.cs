@@ -7,11 +7,18 @@ namespace Search_VTF_ID.Controllers;
 [Route("api/vo-sinh")]
 public class VoSinhController : ControllerBase
 {
-    private readonly VoSinhService _service;
+    // private readonly VoSinhService _service;
+    // private readonly ILogger<VoSinhController> _logger;
 
-    public VoSinhController(VoSinhService service)
+    private readonly HoivienService _hoivienService;
+    private readonly ILogger<HoivienService> _logger;
+
+    public VoSinhController(
+        HoivienService hoivienService,
+        ILogger<HoivienService> logger)
     {
-        _service = service;
+        _hoivienService = hoivienService;
+        _logger = logger;
     }
 
     // GET: /api/vo-sinh/all
@@ -20,7 +27,7 @@ public class VoSinhController : ControllerBase
     {
         try
         {
-            var result = await _service.GetAllAsync();
+            var result = await _hoivienService.GetAllAsync();
 
             return Ok(new
             {
@@ -31,16 +38,20 @@ public class VoSinhController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(
+                ex,
+                "Lỗi khi lấy danh sách võ sinh"
+            );
+
             return StatusCode(500, new
             {
                 success = false,
-                message = "Không thể lấy danh sách võ sinh",
-                error = ex.Message
+                message = "Không thể lấy danh sách võ sinh"
             });
         }
     }
 
-    // GET: /api/vo-sinh?name=toan
+    // GET: /api/vo-sinh? name = toan
     [HttpGet]
     public async Task<IActionResult> Search(
         [FromQuery] string? name)
@@ -56,7 +67,8 @@ public class VoSinhController : ControllerBase
 
         try
         {
-            var result = await _service.SearchAsync(name);
+            var result =
+                await _hoivienService.SearchAsync(name.Trim());
 
             return Ok(new
             {
@@ -67,11 +79,16 @@ public class VoSinhController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(
+                ex,
+                "Lỗi khi tìm kiếm võ sinh với tên: {Name}",
+                name
+            );
+
             return StatusCode(500, new
             {
                 success = false,
-                message = "Không thể tìm kiếm võ sinh",
-                error = ex.Message
+                message = "Không thể tìm kiếm võ sinh"
             });
         }
     }
