@@ -10,7 +10,18 @@ builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration =
+        builder.Configuration.GetConnectionString("Redis");
+
+    options.InstanceName = "VTF:";
+});
+
 builder.Services.AddScoped<VoSinhService>();
+builder.Services.AddScoped<HoivienCacheService>();
+builder.Services.AddSingleton<DataVersionService>();
+builder.Services.AddScoped<HoivienService>();
 
 var app = builder.Build();
 
