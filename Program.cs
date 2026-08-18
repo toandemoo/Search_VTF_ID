@@ -10,12 +10,25 @@ builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 
+// builder.Services.AddStackExchangeRedisCache(options =>
+// {
+//     options.Configuration =
+//         builder.Configuration.GetConnectionString("Redis");
+
+//     options.InstanceName = "VTF:";
+// });
+
+
+var redisUrl = builder.Configuration["REDIS_URL"];
+
+if (string.IsNullOrWhiteSpace(redisUrl))
+{
+    throw new Exception("REDIS_URL chưa được cấu hình!");
+}
+
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration =
-        builder.Configuration.GetConnectionString("Redis");
-
-    options.InstanceName = "VTF:";
+    options.Configuration = redisUrl;
 });
 
 builder.Services.AddScoped<VoSinhService>();
