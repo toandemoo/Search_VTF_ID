@@ -21,7 +21,7 @@ builder.Services.AddHttpClient();
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = "redis://red-da22hijncjis738daiug:6379";
+    options.Configuration = "red-da22hijncjis738daiug:6379";
 });
 
 builder.Services.AddScoped<VoSinhService>();
