@@ -10,6 +10,9 @@ public class HoivienService
     private readonly HoivienCacheService _cache;
     private readonly DataVersionService _version;
     private readonly IHttpClientFactory _httpClientFactory;
+
+    private readonly SemaphoreSlim _loadLock =
+        new(1, 1);
     public HoivienService(
         HoivienCacheService cache,
         DataVersionService version,
@@ -46,6 +49,8 @@ public class HoivienService
         Console.WriteLine(
             "CACHE MISS - LOAD DATA"
         );
+
+        await _loadLock.WaitAsync();
 
         var data = await LoadDataFromSourceAsync();
 
