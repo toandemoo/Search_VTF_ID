@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 using Search_VTF_ID.Models;
 
@@ -6,22 +5,26 @@ public class HoivienCacheService
 {
     private readonly IDistributedCache _cache;
 
-    private const string DATA_KEY = "hoivien:data";
     private const string VERSION_KEY = "hoivien:version";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    // =========================================================
+    // MEMORY CACHE
+    // =========================================================
+
+    private static List<VoSinh>? _memoryData;
+
+    private static string? _memoryVersion;
+
+    private static readonly object _memoryLock = new();
 
     public HoivienCacheService(IDistributedCache cache)
     {
         _cache = cache;
     }
 
-    // =========================
+    // =========================================================
     // GET VERSION
-    // =========================
+    // =========================================================
 
     public async Task<string?> GetVersionAsync()
     {
@@ -39,62 +42,83 @@ public class HoivienCacheService
         }
     }
 
-    // =========================
-    // GET DATA
-    // =========================
+    // =========================================================
+    // GET MEMORY DATA
+    // =========================================================
 
-    public async Task<List<VoSinh>?> GetDataAsync()
+    public List<VoSinh>? GetMemoryData(string version)
     {
-        try
+        lock (_memoryLock)
         {
-            var json = await _cache.GetStringAsync(DATA_KEY);
-
-            if (string.IsNullOrWhiteSpace(json))
+            if (_memoryData == null)
             {
                 return null;
             }
 
-            return JsonSerializer.Deserialize<List<VoSinh>>(
-                json,
-                JsonOptions
-            );
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(
-                $"REDIS GET DATA ERROR: {ex.Message}"
-            );
+            if (_memoryVersion != version)
+            {
+                Console.WriteLine(
+                    $"MEMORY VERSION MISMATCH: {_memoryVersion} != {version}"
+                );
 
-            return null;
+                return null;
+            }
+
+            return _memoryData;
         }
     }
 
-    // =========================
-    // SET DATA
-    // =========================
+    // =========================================================
+    // SAVE MEMORY DATA
+    // =========================================================
 
-    public async Task<bool> SetDataAsync(
+    public void SetMemoryData(
         List<VoSinh> data,
+        string version)
+    {
+        lock (_memoryLock)
+        {
+            _memoryData = data;
+            _memoryVersion = version;
+        }
+
+        Console.WriteLine(
+            $"MEMORY CACHE SAVED - {data.Count} records - VERSION {version}"
+        );
+    }
+
+    // =========================================================
+    // CLEAR MEMORY
+    // =========================================================
+
+    public void ClearMemory()
+    {
+        lock (_memoryLock)
+        {
+            _memoryData = null;
+            _memoryVersion = null;
+        }
+
+        Console.WriteLine("MEMORY CACHE CLEARED");
+    }
+
+    // =========================================================
+    // SET VERSION ONLY
+    //
+    // KHÔNG lưu DATA vào Redis
+    // =========================================================
+
+    public async Task<bool> SetVersionAsync(
         string version)
     {
         try
         {
-            var json = JsonSerializer.Serialize(
-                data,
-                JsonOptions
-            );
-
-            var options = new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow =
-                    TimeSpan.FromHours(12)
-            };
-
-            await _cache.SetStringAsync(
-                DATA_KEY,
-                json,
-                options
-            );
+            var options =
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow =
+                        TimeSpan.FromHours(12)
+                };
 
             await _cache.SetStringAsync(
                 VERSION_KEY,
@@ -102,36 +126,47 @@ public class HoivienCacheService
                 options
             );
 
+            Console.WriteLine(
+                $"REDIS VERSION SAVED: {version}"
+            );
+
             return true;
         }
         catch (Exception ex)
         {
             Console.WriteLine(
-                $"REDIS SET ERROR: {ex.Message}"
+                $"REDIS SET VERSION ERROR: {ex.Message}"
             );
 
+            // Redis lỗi cũng không làm app chết
             return false;
         }
     }
 
-    // =========================
+    // =========================================================
     // CLEAR
-    // =========================
+    // =========================================================
 
     public async Task ClearAsync()
     {
         try
         {
-            await _cache.RemoveAsync(DATA_KEY);
             await _cache.RemoveAsync(VERSION_KEY);
 
-            Console.WriteLine("REDIS CACHE CLEARED");
+            ClearMemory();
+
+            Console.WriteLine(
+                "CACHE CLEARED"
+            );
         }
         catch (Exception ex)
         {
             Console.WriteLine(
                 $"REDIS CLEAR ERROR: {ex.Message}"
             );
+
+            // Redis lỗi vẫn clear memory
+            ClearMemory();
         }
     }
 }
