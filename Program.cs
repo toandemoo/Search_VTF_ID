@@ -25,9 +25,9 @@ builder.Services.AddStackExchangeRedisCache(options =>
 });
 
 builder.Services.AddScoped<VoSinhService>();
-builder.Services.AddScoped<HoivienCacheService>();
+builder.Services.AddSingleton<HoivienCacheService>();
 builder.Services.AddSingleton<DataVersionService>();
-builder.Services.AddScoped<HoivienService>();
+builder.Services.AddSingleton<HoivienService>();
 
 var app = builder.Build();
 
