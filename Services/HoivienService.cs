@@ -5,11 +5,19 @@ using Search_VTF_ID.Models;
 
 public class HoivienService
 {
+    private const string DATA_URL =
+        "https://tkdvn1996.info/0.key/ds_hoivien.csv";
+
     private readonly HoivienCacheService _cache;
     private readonly DataVersionService _version;
     private readonly IHttpClientFactory _httpClientFactory;
 
-    private readonly SemaphoreSlim _loadLock = new(1, 1);
+    // =========================
+    // CHỈ 1 request được LOAD CSV
+    // =========================
+
+    private readonly SemaphoreSlim _loadLock =
+        new(1, 1);
 
     public HoivienService(
         HoivienCacheService cache,
@@ -21,102 +29,168 @@ public class HoivienService
         _httpClientFactory = httpClientFactory;
     }
 
+    // =========================================================
+    // GET ALL
+    // =========================================================
+
     public async Task<List<VoSinh>> GetAllAsync()
     {
         var currentVersion = _version.GetVersion();
 
-        // =========================
-        // 1. Kiểm tra cache
-        // =========================
-        var cacheVersion = await _cache.GetVersionAsync();
+        // =====================================================
+        // 1. KIỂM TRA CACHE
+        // =====================================================
+
+        var cacheVersion =
+            await _cache.GetVersionAsync();
 
         if (cacheVersion == currentVersion)
         {
-            var cached = await _cache.GetDataAsync();
+            var cached =
+                await _cache.GetDataAsync();
 
             if (cached != null)
             {
-                Console.WriteLine("CACHE HIT");
+                Console.WriteLine(
+                    $"CACHE HIT - {cached.Count} records"
+                );
+
                 return cached;
             }
         }
 
-        Console.WriteLine("CACHE MISS - WAITING LOCK");
+        // =====================================================
+        // 2. CACHE MISS
+        // =====================================================
 
-        // =========================
-        // 2. Chỉ cho 1 request load CSV
-        // =========================
+        Console.WriteLine(
+            "CACHE MISS - WAITING LOCK"
+        );
+
         await _loadLock.WaitAsync();
 
         try
         {
-            // =========================
-            // 3. QUAN TRỌNG:
-            //    Kiểm tra cache lại sau khi
-            //    lấy được lock
-            // =========================
-            cacheVersion = await _cache.GetVersionAsync();
+            // =================================================
+            // 3. DOUBLE CHECK
+            //
+            // Trong lúc request này chờ lock,
+            // request khác có thể đã load xong.
+            // =================================================
+
+            Console.WriteLine(
+                "LOCK ACQUIRED - CHECK CACHE AGAIN"
+            );
+
+            cacheVersion =
+                await _cache.GetVersionAsync();
 
             if (cacheVersion == currentVersion)
             {
-                var cached = await _cache.GetDataAsync();
+                var cached =
+                    await _cache.GetDataAsync();
 
                 if (cached != null)
                 {
-                    Console.WriteLine("CACHE HIT AFTER WAIT");
+                    Console.WriteLine(
+                        $"CACHE HIT AFTER WAIT - {cached.Count} records"
+                    );
+
                     return cached;
                 }
             }
 
-            // =========================
-            // 4. Chỉ request đầu tiên
-            //    mới chạy tới đây
-            // =========================
-            Console.WriteLine("CACHE MISS - LOAD DATA");
-
-            var data = await LoadDataFromSourceAsync();
+            // =================================================
+            // 4. LOAD CSV
+            // =================================================
 
             Console.WriteLine(
-                $"DATA LOADED: {data.Count} records"
+                "CACHE MISS - LOAD DATA"
             );
 
-            // =========================
-            // 5. Lưu Redis
-            // =========================
-            await _cache.SetDataAsync(
-                data,
-                currentVersion
+            var data =
+                await LoadDataFromSourceAsync();
+
+            Console.WriteLine(
+                $"DATA LOADED - {data.Count} records"
             );
 
-            Console.WriteLine("CACHE SAVED");
+            // =================================================
+            // 5. SAVE REDIS
+            // =================================================
+
+            var saved =
+                await _cache.SetDataAsync(
+                    data,
+                    currentVersion
+                );
+
+            if (saved)
+            {
+                Console.WriteLine(
+                    "CACHE SAVED"
+                );
+            }
+            else
+            {
+                Console.WriteLine(
+                    "CACHE SAVE FAILED - USING MEMORY DATA"
+                );
+            }
 
             return data;
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"LOAD DATA ERROR: {ex}"
+            );
+
+            throw;
+        }
         finally
         {
-            // =========================
-            // 6. BẮT BUỘC RELEASE LOCK
-            // =========================
+            // =================================================
+            // 6. BẮT BUỘC RELEASE
+            // =================================================
+
             _loadLock.Release();
+
+            Console.WriteLine(
+                "LOCK RELEASED"
+            );
         }
     }
 
-    public async Task<List<VoSinh>> SearchAsync(string name)
+    // =========================================================
+    // SEARCH
+    // =========================================================
+
+    public async Task<List<VoSinh>> SearchAsync(
+        string name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
             return [];
         }
 
-        var keyword = RemoveVietnameseTone(name)
-            .ToLowerInvariant()
-            .Trim();
+        var keyword =
+            RemoveVietnameseTone(name)
+                .ToLowerInvariant()
+                .Trim();
 
-        var students = await GetAllAsync();
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return [];
+        }
+
+        var students =
+            await GetAllAsync();
 
         return students
             .Where(x =>
-                !string.IsNullOrWhiteSpace(x.HoTen) &&
+                !string.IsNullOrWhiteSpace(x.HoTen)
+                &&
                 RemoveVietnameseTone(x.HoTen)
                     .ToLowerInvariant()
                     .Contains(keyword)
@@ -124,25 +198,32 @@ public class HoivienService
             .ToList();
     }
 
-    private static string RemoveVietnameseTone(string text)
+    // =========================================================
+    // REMOVE VIETNAMESE TONE
+    // =========================================================
+
+    private static string RemoveVietnameseTone(
+        string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             return "";
         }
 
-        var normalized = text.Normalize(
-            System.Text.NormalizationForm.FormD
-        );
+        var normalized =
+            text.Normalize(
+                System.Text.NormalizationForm.FormD
+            );
 
-        var result = new string(
-            normalized
-                .Where(c =>
-                    CharUnicodeInfo.GetUnicodeCategory(c)
-                    != UnicodeCategory.NonSpacingMark
-                )
-                .ToArray()
-        );
+        var result =
+            new string(
+                normalized
+                    .Where(c =>
+                        CharUnicodeInfo.GetUnicodeCategory(c)
+                        != UnicodeCategory.NonSpacingMark
+                    )
+                    .ToArray()
+            );
 
         return result
             .Replace('đ', 'd')
@@ -152,53 +233,86 @@ public class HoivienService
             );
     }
 
-    private async Task<List<VoSinh>> LoadDataFromSourceAsync()
+    // =========================================================
+    // LOAD CSV
+    // =========================================================
+
+    private async Task<List<VoSinh>>
+        LoadDataFromSourceAsync()
     {
-        var client = _httpClientFactory.CreateClient();
+        var client =
+            _httpClientFactory.CreateClient();
 
-        client.Timeout = TimeSpan.FromSeconds(60);
+        client.Timeout =
+            TimeSpan.FromSeconds(60);
 
-        using var stream = await client.GetStreamAsync(
-            "https://tkdvn1996.info/0.key/ds_hoivien.csv"
+        Console.WriteLine(
+            $"DOWNLOADING CSV: {DATA_URL}"
         );
 
-        using var reader = new StreamReader(
-            stream,
-            System.Text.Encoding.UTF8,
-            detectEncodingFromByteOrderMarks: true
+        using var response =
+            await client.GetAsync(
+                DATA_URL,
+                HttpCompletionOption.ResponseHeadersRead
+            );
+
+        response.EnsureSuccessStatusCode();
+
+        Console.WriteLine(
+            $"CSV STATUS: {(int)response.StatusCode}"
         );
 
-        using var csvReader = new CsvReader(
-            reader,
-            CultureInfo.InvariantCulture
-        );
+        await using var stream =
+            await response.Content.ReadAsStreamAsync();
 
-        // =========================
-        // Bỏ:
+        using var reader =
+            new StreamReader(
+                stream,
+                System.Text.Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true
+            );
+
+        using var csvReader =
+            new CsvReader(
+                reader,
+                CultureInfo.InvariantCulture
+            );
+
+        // =====================================================
+        // BỎ:
+        //
         // DANH SÁCH HỘI VIÊN
-        // =========================
+        //
+        // dòng trống
+        // =====================================================
+
+        csvReader.Read();
         csvReader.Read();
 
-        // =========================
-        // Bỏ dòng trống
-        // =========================
+        // =====================================================
+        // HEADER
+        // =====================================================
+
         csvReader.Read();
 
-        // =========================
-        // Đọc header
-        // =========================
-        csvReader.Read();
+        csvReader.Context
+            .RegisterClassMap<VoSinhMap>();
 
-        csvReader.Context.RegisterClassMap<VoSinhMap>();
+        // =====================================================
+        // LOAD RECORD
+        // =====================================================
 
-        // =========================
-        // Đọc từng record
-        // =========================
-        var data = new List<VoSinh>();
+        var data =
+            new List<VoSinh>();
 
-        foreach (var record in csvReader.GetRecords<VoSinh>())
+        foreach (
+            var record
+            in csvReader.GetRecords<VoSinh>())
         {
             data.Add(record);
+
+            // Không tạo ToList()
+            // Không giữ IEnumerable trung gian
         }
 
         return data;
